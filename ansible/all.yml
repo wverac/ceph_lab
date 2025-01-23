@@ -1,0 +1,21 @@
+ceph_origin: repository
+ceph_stable_release: quincy
+ceph_repository: community
+public_network: "192.168.100.0/24"
+cluster_network: "192.168.101.0/24"
+devices:
+  - "/dev/vdb"
+  - "/dev/vdc"
+  - "/dev/vdd"
+
+grafana_admin_password: yourusperpasshere
+dashboard_admin_password: yoursuperpasshere
+dashboard_enabled: true
+
+mon_initial_members:
+  - ceph-mon-01
+  - ceph-mon-02
+  - ceph-mon-03
+
+monitor_address_block: 192.168.100.0/24
+radosgw_address_block: 192.168.100.0/24
