@@ -124,4 +124,10 @@ default.rgw.control   4   32      0 B        8      0 B      0     71 GiB
 default.rgw.meta      5   32    824 B        4   48 KiB      0     71 GiB
 cloud@ceph-mon-01:~$
 ```
+You can also access to the dashboard trough 
+```
+https://localhost:8443
+```
+![ceph_dashboard](https://github.com/wverac/ceph_lab/blob/main/assets/ceph-dashboard.png)
+
 w00t!
