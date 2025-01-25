@@ -1,3 +1,4 @@
+# NOTE: debug  
 output "ceph_master_info" {
   description = "The name and IPs of the Ceph master"
   value = {
@@ -8,7 +9,7 @@ output "ceph_master_info" {
 }
 
 output "ceph_nodes_info" {
-  description = "The name and IPs of the Ceph nodes"
+  description = "The name and IPs of the Ceph OSD nodes"
   value = {
     for idx in range(0, 3) : "ceph-osd-${idx + 1}" => {
       admin_ip   = "192.168.100.${idx + 20}"
@@ -18,7 +19,7 @@ output "ceph_nodes_info" {
 }
 
 output "ceph_mon_info" {
-  description = "The name and IPs of the Ceph nodes"
+  description = "The name and IPs of the Ceph MON nodes"
   value = {
     for idx in range(0, 3) : "ceph-mon-${idx + 1}" => {
       admin_ip   = "192.168.100.${idx + 30}"
@@ -26,4 +27,3 @@ output "ceph_mon_info" {
     }
   }
 }
-

@@ -1,0 +1,132 @@
+---
+- name: Configure Ceph cluster
+  hosts: localhost
+  gather_facts: no
+  vars:
+    ip_range_100: [10, 20, 21, 22, 30, 31, 32]
+    ip_range_200: [10, 20, 21, 22, 30, 31, 32]
+    ceph_nodes:
+      - { ip: 192.168.100.10, hostname: ceph-master }
+      - { ip: 192.168.100.20, hostname: ceph-osd-01 }
+      - { ip: 192.168.100.21, hostname: ceph-osd-02 }
+      - { ip: 192.168.100.22, hostname: ceph-osd-03 }
+      - { ip: 192.168.100.30, hostname: ceph-mon-01 }
+      - { ip: 192.168.100.31, hostname: ceph-mon-02 }
+      - { ip: 192.168.100.32, hostname: ceph-mon-03 }
+
+  tasks:
+    - name: Cleanup old SSH known hosts entries
+      shell: |
+        for i in {{ ip_range_100 }}; do ssh-keygen -R 192.168.100.$i; done
+        for i in {{ ip_range_200 }}; do ssh-keygen -R 192.168.200.$i; done
+      delegate_to: localhost
+
+    - name: Generate SSH key on ceph-master
+      command: >
+        ssh -o StrictHostKeyChecking=no cloud@192.168.100.10
+        'mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo y | ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N "" -q'
+      delegate_to: localhost
+
+    - name: Verify SSH key was generated
+      command: >
+        ssh -o StrictHostKeyChecking=no cloud@192.168.100.10
+        'ls -la /home/cloud/.ssh/id_rsa.pub'
+      register: ssh_key_check
+      delegate_to: localhost
+      ignore_errors: yes
+
+    - name: Fail if SSH key was not generated
+      fail:
+        msg: "SSH key was not generated on ceph-master. Check the previous task for errors."
+      when: ssh_key_check.rc != 0
+
+    - name: Fetch SSH public key
+      fetch:
+        src: /home/cloud/.ssh/id_rsa.pub
+        dest: ./id_rsa.pub
+        flat: yes
+      delegate_to: 192.168.100.10
+      remote_user: cloud
+
+    - name: Distribute SSH public key to all nodes
+      shell: |
+        ssh -o StrictHostKeyChecking=no cloud@{{ item }} "cat >> ~/.ssh/authorized_keys" <./id_rsa.pub
+      delegate_to: localhost
+      with_items:
+        - 192.168.100.20
+        - 192.168.100.21
+        - 192.168.100.22
+        - 192.168.100.30
+        - 192.168.100.31
+        - 192.168.100.32
+
+    - name: Set hostnames on all nodes
+      command: >
+        ssh -o StrictHostKeyChecking=no cloud@{{ item.ip }}
+        'sudo hostnamectl hostname {{ item.hostname }}'
+      with_items: "{{ ceph_nodes }}"
+      delegate_to: localhost
+
+    - name: Clone ceph-ansible repository on ceph-master
+      command: >
+        ssh -o StrictHostKeyChecking=no cloud@192.168.100.10
+        'rm -rf ~/ceph-ansible && git clone https://github.com/ceph/ceph-ansible.git'
+      delegate_to: localhost
+
+    - name: Copy files to master
+      copy:
+        src: "{{ item.src }}"
+        dest: "/home/cloud/ceph-ansible/{{ item.dest }}"
+      with_items:
+        - { src: "./all.yml", dest: "group_vars/all.yml" }
+        - { src: "./vault-passwd", dest: "vault-passwd" }
+        - { src: "./inventory", dest: "inventory" }
+      delegate_to: 192.168.100.10
+      remote_user: cloud
+
+    - name: Copy authorized_keys to root
+      command: >
+        ssh -o StrictHostKeyChecking=no cloud@{{ item.ip }}
+        'sudo mkdir -p /root/.ssh/ && sudo cp ~/.ssh/authorized_keys /root/.ssh/'
+      with_items: "{{ ceph_nodes }}"
+      delegate_to: localhost
+
+    - name: Configure cluster network on OSD nodes
+      command: >
+        ssh -o StrictHostKeyChecking=no cloud@{{ item.ip }}
+        'sudo ip link set dev ens4 up && sudo ip a add 192.168.101.{{ item.ip.split(".")[3] }}/24 dev ens4'
+      with_items: "{{ ceph_nodes }}"
+      when: "'osd' in item.hostname"
+      delegate_to: localhost
+
+    - name: Install liburcu6 on MON nodes
+      command: >
+        ssh -o StrictHostKeyChecking=no cloud@{{ item.ip }}
+        'sudo add-apt-repository ppa:cloudhan/liburcu6 -y && sudo apt update && sudo apt install liburcu6 -y'
+      with_items: "{{ ceph_nodes }}"
+      when: "'mon' in item.hostname"
+      delegate_to: localhost
+
+    - name: Install Ansible and dependencies on ceph-master
+      command: >
+        ssh -o StrictHostKeyChecking=no cloud@192.168.100.10
+        'sudo apt-add-repository ppa:ansible/ansible -y && sudo apt update -y && sudo apt install python3-pip git ansible pipx yamllint -y'
+      delegate_to: localhost
+
+    - name: Install Python requirements on ceph-master
+      command: >
+        ssh -o StrictHostKeyChecking=no cloud@192.168.100.10
+        'cd ~/ceph-ansible; pip install -r requirements.txt'
+      delegate_to: localhost
+
+    - name: Install Ansible Galaxy roles on ceph-master
+      command: >
+        ssh -o StrictHostKeyChecking=no cloud@192.168.100.10
+        'cd ~/ceph-ansible; ansible-galaxy install -r requirements.yml'
+      delegate_to: localhost
+
+    - name: Deploy ceph-ansible playbook on ceph-master
+      command: >
+        ssh -o StrictHostKeyChecking=no cloud@192.168.100.10
+        'cd ~/ceph-ansible; ansible-playbook -i inventory site.yml.sample -e yes_i_know=true --vault-password-file=vault-passwd'
+      delegate_to: localhost

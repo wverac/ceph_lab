@@ -1,2 +1,6 @@
 ansible/id_rsa.pub
-ansible/pre.sh
+ansible/vault-passwd
+terraform/.terraform.lock.hcl
+terraform/terraform.tfstate*
+terraform/.terraform/
+
